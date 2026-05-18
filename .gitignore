@@ -1,0 +1,54 @@
+# ========================
+# Environnement Python
+# ========================
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# ========================
+# Variables d'environnement
+# ========================
+.env
+
+# ========================
+# Modèles ML et Logs
+# ========================
+*.pkl
+*.joblib
+notebooks/catboost_info/
+notebooks/outputs/
+
+
+# ========================
+# Modèles ML et Logs
+# ========================
+models/*.pkl
+models/*.joblib
+notebooks/catboost_info/
+notebooks/outputs/
+
+# ========================
+# Données brutes et sensibles
+# ========================
+data/raw/
+data/processed/
+data/ntsb_csv/
+*.csv
+
+# ========================
+# IDE & OS
+# ========================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ========================
+# Tests
+# ========================
+.pytest_cache/
+htmlcov/
+.coverage
