@@ -15,13 +15,6 @@ function worstCase(interval: RiskLevel[]): RiskLevel {
   )[0];
 }
 
-function bestCase(interval: RiskLevel[]): RiskLevel {
-  if (!interval.length) return "NONE";
-  return [...interval].sort(
-    (a, b) => SEVERITY_ORDER.indexOf(a) - SEVERITY_ORDER.indexOf(b)
-  )[0];
-}
-
 function RiskBadge({ level, size = "md" }: { level: RiskLevel; size?: "sm" | "md" | "lg" }) {
   const meta = RISK_META[level];
   return (
@@ -42,7 +35,6 @@ function MapieGauge({ interval, prediction }: { interval: RiskLevel[]; predictio
   }, [interval]);
 
   const worst    = worstCase(interval);
-  const best     = bestCase(interval);
   const worstMeta = RISK_META[worst];
 
   return (
@@ -52,7 +44,6 @@ function MapieGauge({ interval, prediction }: { interval: RiskLevel[]; predictio
           <path d="M18 20V10M12 20V4M6 20v-6"/>
         </svg>
         Intervalle d'incertitude MAPIE
-        {/* Le texte "Confiance 90 %" statique a été retiré ici */}
       </div>
 
       <div className="mapie-levels">
@@ -80,18 +71,43 @@ function MapieGauge({ interval, prediction }: { interval: RiskLevel[]; predictio
           <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
         </svg>
         <span style={{ color: "var(--text-secondary)" }}>
-          Sévérité réelle estimée entre&nbsp;
-          <RiskBadge level={best} size="sm" /> et <RiskBadge level={worst} size="sm" />
+          {filledLevels.length === 1 ? "Seule classe plausible" : "Classes plausibles"}&nbsp;:&nbsp;
+          {filledLevels.map((level) => <RiskBadge key={level} level={level} size="sm" />)}
         </span>
       </div>
     </div>
   );
 }
 
+/** Probabilités brutes du classifieur, une barre par classe. */
+function ProbabilityBars({ probabilities }: { probabilities: PredictionResponse["probabilities"] }) {
+  if (!Object.keys(probabilities).length) return null;
+  return (
+    <div className="proba-list" aria-label="Probabilités par classe">
+      {SEVERITY_ORDER.map((level) => {
+        const p = probabilities[level] ?? 0;
+        return (
+          <div className="proba-row" key={level}>
+            <span className="proba-code">{level}</span>
+            <div className="proba-track">
+              <div className="proba-fill" style={{ width: `${p * 100}%`, background: RISK_META[level].color }} />
+            </div>
+            <span className="proba-value">{Math.round(p * 100)} %</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// En dessous de ce taux de variables renseignées, l'imputation domine la prédiction.
+const LOW_COVERAGE = 0.5;
+
 export default function ResultPanel({ result, onRequestReport, isReportLoading }: ResultPanelProps) {
-  const { prediction, confidence_level, uncertainty_interval } = result;
+  const { prediction, confidence_level, uncertainty_interval, probabilities, model, input_coverage } = result;
   const meta           = RISK_META[prediction];
-  const confidencePct  = Math.round(confidence_level * 100);
+  const confidencePct  = confidence_level != null ? Math.round(confidence_level * 100) : null;
+  const coverage       = input_coverage.provided / input_coverage.expected;
   const hasInterval    = uncertainty_interval.length > 0;
   const worst          = worstCase(uncertainty_interval);
   const isWorstDiff    = worst !== prediction;
@@ -101,9 +117,10 @@ export default function ResultPanel({ result, onRequestReport, isReportLoading }
       {/* ── Bandeau titre ── */}
       <div className="result-panel-header">
         <span className="result-panel-title">Résultat du Pipeline ML</span>
-{/*         <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-faint)" }}>
-          LightGBM + MAPIE · α = 0.10
-        </span> */}
+        <span className="result-meta">
+          <span>{model.name} · {model.type}</span>
+          <span>{input_coverage.provided}/{input_coverage.expected} variables renseignées</span>
+        </span>
       </div>
 
       <div className="result-panel-body">
@@ -111,7 +128,11 @@ export default function ResultPanel({ result, onRequestReport, isReportLoading }
         <div className="result-main" style={{ borderColor: meta.border, backgroundColor: meta.bg }}>
           <div className="result-main-header">
             <span className="result-main-label">Prédiction majoritaire</span>
-            <span className="result-confidence">{confidencePct} % de confiance</span>
+            {confidencePct != null && (
+              <span className="result-confidence" title="Couverture garantie de l'ensemble de prédiction MAPIE">
+                Intervalle à {confidencePct} %
+              </span>
+            )}
           </div>
 
           <div className="result-risk-display">
@@ -153,6 +174,16 @@ export default function ResultPanel({ result, onRequestReport, isReportLoading }
             </div>
           )}
         </div>
+
+        <ProbabilityBars probabilities={probabilities} />
+
+        {coverage < LOW_COVERAGE && (
+          <p className="coverage-warning">
+            Seules {input_coverage.provided} variables sur {input_coverage.expected} sont renseignées :
+            les autres sont remplacées par des valeurs typiques du jeu d'entraînement, ce qui rend
+            cette prédiction peu spécifique au vol analysé.
+          </p>
+        )}
 
         {/* ── Jauge MAPIE ── */}
         {hasInterval && <MapieGauge interval={uncertainty_interval} prediction={prediction} />}

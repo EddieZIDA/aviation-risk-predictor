@@ -2,57 +2,32 @@
  * services/api.ts — Client API typé
  * ===================================
  * Couche d'abstraction entre les composants React et le backend Flask.
- * Toutes les fonctions sont typées et gèrent les erreurs réseau.
- *
  * Règle : les composants ne connaissent jamais fetch() directement.
+ *
+ * Toute réponse non-2xx lève une ApiError portant le message du backend :
+ * les composants n'ont qu'à afficher `err.message`.
  */
 
 import type {
-  PredictionPayload,
-  PredictApiResponse,
-  ReportPayload,
-  ReportApiResponse,
   DistributionResponse,
+  HealthResponse,
+  PredictionPayload,
+  PredictionResponse,
+  RandomExampleResponse,
+  ReportPayload,
+  ReportResponse,
+  SeverityResponse,
   StatsResponse,
+  TimeSeriesResponse,
 } from "../types";
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:5005/api";
+// Par défaut « /api » : en dev, le proxy Vite redirige vers Flask (vite.config.ts),
+// ce qui évite CORS. VITE_API_URL permet de pointer vers un autre serveur.
+const BASE_URL = import.meta.env.VITE_API_URL ?? "/api";
 
-// ── Helper fetch générique ────────────────────────────────────────────────────
-
-async function apiFetch<T>(
-  endpoint: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const url = `${BASE_URL}${endpoint}`;
-
-  const response = await fetch(url, {
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-    ...options,
-  });
-
-  // On parse le JSON même pour les erreurs HTTP (le backend renvoie toujours du JSON)
-  const data: T = await response.json();
-
-  if (!response.ok) {
-    // Lance une erreur enrichie avec le message backend si disponible
-    const errorData = data as { message?: string; code?: string };
-    throw new ApiError(
-      errorData.message ?? `Erreur HTTP ${response.status}`,
-      response.status,
-      errorData.code ?? "HTTP_ERROR"
-    );
-  }
-
-  return data;
-}
-
-// ── Classe d'erreur custom ────────────────────────────────────────────────────
+// ── Erreur typée ──────────────────────────────────────────────────────────────
 
 export class ApiError extends Error {
   constructor(
@@ -65,86 +40,83 @@ export class ApiError extends Error {
   }
 }
 
-// ── Fonctions API typées ──────────────────────────────────────────────────────
+/** Message lisible pour n'importe quelle erreur attrapée dans un composant. */
+export function errorMessage(err: unknown, fallback = "Une erreur inattendue s'est produite."): string {
+  if (err instanceof ApiError) return err.message;
+  if (err instanceof TypeError) return "Serveur injoignable. Le backend Flask est-il démarré ?";
+  return fallback;
+}
 
-/**
- * POST /api/predict
- * Envoie le payload brut (~128 features) et retourne la prédiction MAPIE.
- *
- * @param payload - Objet JSON avec les features de l'accident
- * @returns PredictApiResponse (succès ou erreur structurée)
- */
-export async function predictAccident(
-  payload: PredictionPayload
-): Promise<PredictApiResponse> {
-  return apiFetch<PredictApiResponse>("/predict", {
-    method: "POST",
-    body: JSON.stringify(payload),
+// ── Helper fetch générique ────────────────────────────────────────────────────
+
+async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const response = await fetch(`${BASE_URL}${endpoint}`, {
+    ...options,
+    headers: { "Content-Type": "application/json", ...options.headers },
   });
+
+  // Le backend répond toujours en JSON ; un proxy en erreur peut renvoyer du HTML.
+  let body: unknown = null;
+  try {
+    body = await response.json();
+  } catch {
+    if (response.ok) throw new ApiError("Réponse invalide du serveur.", response.status, "INVALID_JSON");
+  }
+
+  if (!response.ok) {
+    const err = (body ?? {}) as { message?: string; code?: string };
+    const message =
+      err.message ??
+      (response.status >= 500
+        ? "Le backend ne répond pas correctement (vérifiez qu'il est démarré sur le port 5005)."
+        : `Erreur HTTP ${response.status}`);
+    throw new ApiError(message, response.status, err.code ?? "HTTP_ERROR");
+  }
+
+  return body as T;
 }
 
-/**
- * POST /api/report
- * Envoie la prédiction + features à Gemini pour générer un rapport de sécurité.
- *
- * @param data - { prediction, uncertainty_interval, accident_features }
- * @returns ReportApiResponse avec le rapport structuré Gemini
- */
-export async function generateReport(
-  data: ReportPayload
-): Promise<ReportApiResponse> {
-  return apiFetch<ReportApiResponse>("/report", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
+// ── Prédiction & rapport ──────────────────────────────────────────────────────
+
+/** POST /api/predict — prédiction + ensemble d'incertitude MAPIE. */
+export function predictAccident(payload: PredictionPayload): Promise<PredictionResponse> {
+  return apiFetch("/predict", { method: "POST", body: JSON.stringify(payload) });
 }
 
-/**
- * GET /api/historical/distribution?field=<field>
- * Retourne la distribution d'un champ pour les graphiques EDA.
- *
- * @param field - Champ MongoDB à agréger (ex: "ev_state", "phase_flt_spec")
- * @returns DistributionResponse avec la liste [{_id, count}]
- */
-export async function getHistoricalDistribution(
-  field: string
-): Promise<DistributionResponse> {
-  return apiFetch<DistributionResponse>(
-    `/historical/distribution?field=${encodeURIComponent(field)}`
-  );
+/** POST /api/report — rapport de sécurité Gemini ancré sur le pire scénario plausible. */
+export function generateReport(data: ReportPayload): Promise<ReportResponse> {
+  return apiFetch("/report", { method: "POST", body: JSON.stringify(data) });
 }
 
-/**
- * GET /api/historical/stats
- * Retourne les statistiques globales du dataset (hors test).
- */
-export async function getHistoricalStats(): Promise<StatsResponse> {
-  return apiFetch<StatsResponse>("/historical/stats");
+// ── Données historiques (hors jeu de test) ────────────────────────────────────
+
+export function getHistoricalStats(): Promise<StatsResponse> {
+  return apiFetch("/historical/stats");
 }
 
-/**
- * GET /api/historical/timeseries
- * Retourne la série temporelle mensuelle des accidents.
- */
-export async function getTimeSeries() {
-  return apiFetch<{ status: string; data: { year: number; month: number; count: number }[] }>(
-    "/historical/timeseries"
-  );
+export function getHistoricalDistribution(field: string): Promise<DistributionResponse> {
+  return apiFetch(`/historical/distribution?field=${encodeURIComponent(field)}`);
 }
 
-/**
- * GET /api/historical/risk-breakdown
- * Retourne la distribution FATL/SERS/MINR/NONE.
- */
-export async function getRiskBreakdown(): Promise<DistributionResponse> {
-  return apiFetch<DistributionResponse>("/historical/risk-breakdown");
+export function getSeverityBy(field: string): Promise<SeverityResponse> {
+  return apiFetch(`/historical/severity?field=${encodeURIComponent(field)}`);
 }
 
-/**
- * GET /api/historical/random-example
- * Retourne un document aléatoire de MongoDB (hors données test)
- * comme payload brut prêt à soumettre au modèle.
- */
-export async function getRandomExample(): Promise<{ status: string; data: Record<string, unknown> }> {
+export function getTimeSeries(): Promise<TimeSeriesResponse> {
+  return apiFetch("/historical/timeseries");
+}
+
+export function getRiskBreakdown(): Promise<DistributionResponse> {
+  return apiFetch("/historical/risk-breakdown");
+}
+
+/** Document aléatoire de MongoDB, prêt à être soumis à /api/predict. */
+export function getRandomExample(): Promise<RandomExampleResponse> {
   return apiFetch("/historical/random-example");
+}
+
+// ── Diagnostic ────────────────────────────────────────────────────────────────
+
+export function getHealth(): Promise<HealthResponse> {
+  return apiFetch("/health");
 }

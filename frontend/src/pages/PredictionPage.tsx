@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import type { PredictionPayload, PredictionResponse, GeminiReport } from "../types";
-import { predictAccident, generateReport, ApiError } from "../services/api";
+import { predictAccident, generateReport, errorMessage } from "../services/api";
 import PredictForm from "../components/PredictForm";
 import ResultPanel from "../components/ResultPanel";
 import GeminiReportComponent from "../components/GeminiReport";
@@ -9,6 +9,7 @@ export default function PredictionPage() {
   const [isPredicting, setIsPredicting] = useState(false);
   const [predictionResult, setPredictionResult] = useState<PredictionResponse | null>(null);
   const [predictionError, setPredictionError] = useState<string | null>(null);
+  // Payload ayant produit la prédiction affichée (réutilisé pour le rapport Gemini)
   const [currentPayload, setCurrentPayload] = useState<PredictionPayload | null>(null);
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -18,21 +19,15 @@ export default function PredictionPage() {
   const handlePredict = useCallback(async (payload: PredictionPayload) => {
     setIsPredicting(true);
     setPredictionError(null);
+    setPredictionResult(null);
     setReportResult(null);
     setReportError(null);
     setCurrentPayload(payload);
 
     try {
-      const response = await predictAccident(payload);
-      if (response.status === "error") {
-        setPredictionError(response.message);
-        setPredictionResult(null);
-        return;
-      }
-      setPredictionResult(response);
+      setPredictionResult(await predictAccident(payload));
     } catch (err) {
-      setPredictionResult(null);
-      setPredictionError("Échec de l'analyse. Vérifiez la connexion au service de calcul.");
+      setPredictionError(errorMessage(err, "Échec de l'analyse."));
     } finally {
       setIsPredicting(false);
     }
@@ -49,13 +44,9 @@ export default function PredictionPage() {
         uncertainty_interval: predictionResult.uncertainty_interval,
         accident_features: currentPayload,
       });
-      if (response.status === "error") {
-        setReportError(response.message);
-        return;
-      }
       setReportResult(response.report);
     } catch (err) {
-      setReportError("L'IA n'a pas pu générer le rapport. Vérifiez la clé API.");
+      setReportError(errorMessage(err, "Le rapport n'a pas pu être généré."));
     } finally {
       setIsAnalyzing(false);
     }
@@ -69,8 +60,8 @@ export default function PredictionPage() {
       </div>
 
       {/* ── BLOC DROIT : RÉSULTATS (Défilant) ── */}
-      <div className="split-column output-zone">
-        {!predictionResult && !isPredicting && (
+      <div className="split-column output-zone" aria-live="polite">
+        {!predictionResult && !isPredicting && !predictionError && (
           <div className="empty-state">
             <div className="empty-icon"></div>
             <h3>En attente de données</h3>
@@ -81,12 +72,12 @@ export default function PredictionPage() {
         {isPredicting && (
           <div className="loading-state">
             <div className="spinner-large" />
-            <p>Le moteur de calcul analyse les variables d'incident...</p>
+            <p>Le moteur de calcul analyse les variables d'incident</p>
           </div>
         )}
 
         {predictionError && (
-          <div className="error-card">
+          <div className="error-card" role="alert">
             <strong>Erreur d'Analyse</strong>
             <p>{predictionError}</p>
           </div>
@@ -101,7 +92,8 @@ export default function PredictionPage() {
             />
 
             {reportError && (
-              <div className="error-card" style={{ marginTop: '20px' }}>
+              <div className="error-card" role="alert" style={{ marginTop: '20px' }}>
+                <strong>Rapport indisponible</strong>
                 <p>{reportError}</p>
               </div>
             )}
@@ -111,7 +103,7 @@ export default function PredictionPage() {
                 <div className="typing-indicator">
                   <span></span><span></span><span></span>
                 </div>
-                <p>Génération du rapport d'expertise en cours...</p>
+                <p>Génération du rapport d'expertise en cours</p>
               </div>
             )}
 

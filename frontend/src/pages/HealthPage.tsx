@@ -1,100 +1,87 @@
 import { useState, useEffect } from "react";
+import { getHealth, errorMessage } from "../services/api";
+import type { HealthResponse } from "../types";
 
-export default function HealthPage() {
-  const [health, setHealth] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-
-useEffect(() => {
-    // On cible bien le port 5005 ici aussi
-    fetch("http://localhost:5005/api/health")
-      .then(res => res.json())
-      .then(data => {
-        setHealth(data);
-        setLoading(false);
-      })
-      .catch(() => {
-        setHealth(null);
-        setLoading(false);
-      });
-  }, []);
-
-  // Composant carte de statut réutilisable
-  const StatusCard = ({ title, status, desc, isOk }: { title: string, status: string, desc: string, isOk: boolean }) => (
-    <div style={{ 
-      padding: '24px', 
-      border: `1px solid ${isOk ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`, 
-      borderRadius: '12px', 
-      background: 'var(--bg-elevated)',
-      position: 'relative',
-      overflow: 'hidden'
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <h4 style={{ fontSize: '15px', color: 'var(--text-primary)', fontWeight: 600 }}>{title}</h4>
-        <div style={{ 
-          width: '12px', height: '12px', borderRadius: '50%', 
-          backgroundColor: isOk ? '#10b981' : '#ef4444', 
-          boxShadow: `0 0 12px ${isOk ? '#10b981' : '#ef4444'}` 
-        }} />
+function StatusCard({ title, status, desc, isOk }: { title: string; status: string; desc: string; isOk: boolean }) {
+  return (
+    <div className={`status-card ${isOk ? "status-card--ok" : "status-card--ko"}`}>
+      <div className="status-card-head">
+        <h4>{title}</h4>
+        <span className="status-dot" aria-hidden="true" />
       </div>
-      <div style={{ fontSize: '20px', fontWeight: 700, color: isOk ? '#10b981' : '#ef4444', marginBottom: '6px' }}>
-        {status}
-      </div>
-      <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-        {desc}
-      </div>
+      <div className="status-value">{status}</div>
+      <div className="status-desc">{desc}</div>
     </div>
   );
+}
+
+export default function HealthPage() {
+  const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getHealth()
+      .then(setHealth)
+      .catch((err) => setError(errorMessage(err)))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const model = health?.model;
+  const confidencePct = model?.confidence_level != null ? Math.round(model.confidence_level * 100) : null;
 
   return (
-    <div className="predict-form" style={{ padding: '30px', minHeight: '100%' }}>
-      <div style={{ marginBottom: '30px' }}>
-        <h2 style={{ fontSize: '22px', fontWeight: 600, color: 'var(--text-primary)' }}>Supervision du Pipeline ML</h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginTop: '4px' }}>
-          Vérification en temps réel de l'intégrité des modèles, de la base de données et des API tierces.
-        </p>
+    <div className="page-card">
+      <div className="page-intro">
+        <h2>Supervision du Pipeline ML</h2>
+        <p>État en temps réel des modèles, de la base de données et des API tierces.</p>
       </div>
-      
+
       {loading ? (
-        <div className="loading-state" style={{ border: 'none' }}>
+        <div className="loading-state" style={{ border: "none" }}>
           <div className="spinner-large" />
-          <p>Analyse des systèmes en cours...</p>
+          <p>Analyse des systèmes en cours…</p>
         </div>
       ) : !health ? (
-        <div className="error-card">
-          <strong>⚠️ Connexion au Backend Perdue</strong>
-          <p>Le serveur Flask (Port 5005) ne répond pas. Veuillez vérifier que votre terminal backend est actif.</p>
+        <div className="error-card" role="alert">
+          <strong>Connexion au backend impossible</strong>
+          <p>{error}</p>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
-          
-          <StatusCard 
-            title="Moteur de Prédiction (LightGBM)" 
-            status={health.model_loaded ? "En Ligne" : "Hors Ligne"} 
-            desc={health.model_loaded ? "Modèle principal chargé avec succès." : "Fichier full_pipeline.pkl introuvable."} 
-            isOk={health.model_loaded} 
-          />
-          
-          <StatusCard 
-            title="Module d'Incertitude (MAPIE)" 
-            status={health.model_loaded ? "Calibré" : "Inactif"} 
-            desc="Couverture statistique à 90% active." 
-            isOk={health.model_loaded} 
-          />
-          
-          <StatusCard 
-            title="Base de Données Historique" 
-            status={health.mongodb_config?.uri_set ? "Connectée" : "Déconnectée"} 
-            desc={`MongoDB // Collection: ${health.mongodb_config?.collection || "N/A"}`} 
-            isOk={health.mongodb_config?.uri_set} 
-          />
-          
-          <StatusCard 
-            title="Génération de Rapports (LLM)" 
-            status={health.gemini_enabled ? "Prêt" : "Clé API Manquante"} 
-            desc="API Google Gemini disponible." 
-            isOk={health.gemini_enabled} 
+        <div className="health-grid">
+          <StatusCard
+            title="Moteur de prédiction"
+            status={health.model_loaded ? "En ligne" : "Hors ligne"}
+            desc={model ? `${model.name} chargé` : "Artefacts des notebooks 03 à 05 introuvables."}
+            isOk={health.model_loaded}
           />
 
+          <StatusCard
+            title="Module d'incertitude"
+            status={confidencePct != null ? "Calibré" : "Inactif"}
+            desc={confidencePct != null
+              ? `${model?.type} · couverture cible ${confidencePct} %`
+              : "Pas de MAPIE : prédiction ponctuelle uniquement."}
+            isOk={confidencePct != null}
+          />
+
+          <StatusCard
+            title="Base de données historique"
+            status={health.mongodb.connected ? "Connectée" : "Déconnectée"}
+            desc={!health.mongodb.connected
+              ? "MongoDB injoignable (MONGO_URI)."
+              : health.mongodb.test_split_protected
+                ? "Collection accidents · jeu de test masqué"
+                : "Champ split absent : relancez seed_mongo.py"}
+            isOk={health.mongodb.connected && health.mongodb.test_split_protected}
+          />
+
+          <StatusCard
+            title="Génération de rapports (LLM)"
+            status={health.gemini_enabled ? "Prêt" : "Clé API manquante"}
+            desc={health.gemini_enabled ? `Google ${health.gemini_model}` : "Définir GEMINI_API_KEY dans backend/.env."}
+            isOk={health.gemini_enabled}
+          />
         </div>
       )}
     </div>

@@ -49,30 +49,41 @@ export const RISK_META: Record<
 
 export const SEVERITY_ORDER: RiskLevel[] = ["NONE", "MINR", "SERS", "FATL"];
 
-// ── API : Prédiction ──────────────────────────────────────────────────────────
-
-/** Payload brut envoyé à POST /api/predict */
-export type PredictionPayload = Record<string, string | number | null>;
-
-/** Réponse succès de POST /api/predict */
-export interface PredictionResponse {
-  status: "success";
-  prediction: RiskLevel;
-  confidence_level: number;           // ex: 0.90
-  uncertainty_interval: RiskLevel[];  // ex: ["MINR", "SERS"]
-  _debug?: {
-    raw_prediction_idx: number;
-  };
+export function isRiskLevel(value: unknown): value is RiskLevel {
+  return typeof value === "string" && (SEVERITY_ORDER as string[]).includes(value);
 }
 
-/** Réponse erreur générique de l'API */
+// ── Réponses génériques ───────────────────────────────────────────────────────
+
+/** Toute erreur de l'API a ce format (voir backend/routes/errors.py). */
 export interface ApiErrorResponse {
   status: "error";
   code: string;
   message: string;
 }
 
-export type PredictApiResponse = PredictionResponse | ApiErrorResponse;
+// ── API : Prédiction ──────────────────────────────────────────────────────────
+
+/**
+ * Payload brut envoyé à POST /api/predict : une ligne au format du CSV nettoyé.
+ * Les valeurs peuvent être du texte : le backend se charge du typage.
+ */
+export type PredictionPayload = Record<string, string | number | boolean | null>;
+
+/** Réponse succès de POST /api/predict */
+export interface PredictionResponse {
+  status: "success";
+  prediction: RiskLevel;
+  /** 1 - alpha de MAPIE (ex. 0.90) ; null si le modèle n'a pas de MAPIE. */
+  confidence_level: number | null;
+  /** Ensemble de prédiction MAPIE : classes plausibles au niveau de confiance. */
+  uncertainty_interval: RiskLevel[];
+  probabilities: Partial<Record<RiskLevel, number>>;
+  model: { name: string; type: string };
+  /** Nombre de variables renseignées parmi celles attendues par le modèle. */
+  input_coverage: { provided: number; expected: number };
+  _debug?: { raw_prediction_idx: number };
+}
 
 // ── API : Rapport Gemini ──────────────────────────────────────────────────────
 
@@ -83,11 +94,8 @@ export interface ReportPayload {
   accident_features: PredictionPayload;
 }
 
-/** Structure du rapport généré par Gemini (champs JSON stricts) */
+/** Structure du rapport généré par Gemini (validée côté backend) */
 export interface GeminiReport {
-  report(report: any): unknown;
-  message(message: any): unknown;
-  status: string;
   risk_summary: string;
   contributing_factors: string[];
   safety_recommendations: string[];
@@ -107,42 +115,62 @@ export interface ReportResponse {
   report: GeminiReport;
 }
 
-export type ReportApiResponse = ReportResponse | ApiErrorResponse;
-
 // ── API : Données historiques ─────────────────────────────────────────────────
 
 export interface DistributionItem {
-  _id: string;
+  _id: string | number;
   count: number;
 }
 
 export interface DistributionResponse {
   status: "success";
-  field: string;
+  field?: string;
   data: DistributionItem[];
+}
+
+export interface SeverityItem {
+  _id: string | number;
+  total: number;
+  NONE: number;
+  MINR: number;
+  SERS: number;
+  FATL: number;
+}
+
+export interface SeverityResponse {
+  status: "success";
+  field: string;
+  data: SeverityItem[];
 }
 
 export interface StatsResponse {
   status: "success";
   data: {
     total_accidents: number;
+    fatal_accidents: number;
+    fatal_rate: number;
     years_covered: number[];
     states_count: number;
   };
 }
 
-// ── États UI locaux ───────────────────────────────────────────────────────────
-
-export type AsyncStatus = "idle" | "loading" | "success" | "error";
-
-export interface PredictionState {
-  status: AsyncStatus;
-  result: PredictionResponse | null;
-  error: string | null;
+export interface TimeSeriesResponse {
+  status: "success";
+  data: { year: number; month: number; count: number }[];
 }
 
-export interface ReportState {
-  status: AsyncStatus;
-  result: GeminiReport | null;
-  error: string | null;
+export interface RandomExampleResponse {
+  status: "success";
+  data: PredictionPayload;
+}
+
+// ── API : Santé ───────────────────────────────────────────────────────────────
+
+export interface HealthResponse {
+  status: "online";
+  model_loaded: boolean;
+  model: { name: string; type: string; confidence_level: number | null } | null;
+  mongodb: { connected: boolean; test_split_protected: boolean };
+  gemini_enabled: boolean;
+  gemini_model: string | null;
 }

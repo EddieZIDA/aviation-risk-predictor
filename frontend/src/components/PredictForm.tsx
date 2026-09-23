@@ -1,6 +1,37 @@
 import { useState, useCallback, useRef } from "react";
 import type { PredictionPayload } from "../types";
-import { getRandomExample } from "../services/api";
+import { getRandomExample, errorMessage } from "../services/api";
+
+type FormValues = PredictionPayload;
+
+/**
+ * Parseur CSV minimal (RFC 4180) : gère les champs entre guillemets contenant
+ * des virgules, des retours à la ligne ou des guillemets doublés ("").
+ */
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"' && text[i + 1] === '"') { field += '"'; i++; }
+      else if (c === '"') inQuotes = false;
+      else field += c;
+    } else if (c === '"') inQuotes = true;
+    else if (c === ",") { row.push(field); field = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(field); field = "";
+      if (row.some((v) => v !== "")) rows.push(row);
+      row = [];
+    } else field += c;
+  }
+  row.push(field);
+  if (row.some((v) => v !== "")) rows.push(row);
+  return rows;
+}
 
 interface PredictFormProps {
   onSubmit: (payload: PredictionPayload) => Promise<void>;
@@ -8,7 +39,7 @@ interface PredictFormProps {
 }
 
 export default function PredictForm({ onSubmit, isLoading }: PredictFormProps) {
-  const [formData, setFormData] = useState<Record<string, any>>({});
+  const [formData, setFormData] = useState<FormValues>({});
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [dataSourceInfo, setDataSourceInfo] = useState<string | null>(null);
   const [loadingExample, setLoadingExample] = useState(false);
@@ -20,46 +51,37 @@ export default function PredictForm({ onSubmit, isLoading }: PredictFormProps) {
     setLoadingExample(true);
     setErrorMsg(null);
     try {
-      const response = await getRandomExample();
-      if (response.status !== "success" || !response.data) {
-        setErrorMsg("Connexion à la base de données impossible.");
-        return;
-      }
-      const payload = response.data as Record<string, any>;
-      setFormData(payload);
-      const make = payload.acft_make || "Aéronef inconnu";
-      const year = payload.ev_year || "";
-      setDataSourceInfo(`Dossier historique chargé : ${make} ${year}`);
-    } catch {
-      setErrorMsg("Erreur réseau. Le serveur est-il actif ?");
+      const { data } = await getRandomExample();
+      setFormData(data);
+      setDataSourceInfo(`Dossier historique chargé : ${data.acft_make ?? "aéronef inconnu"} ${data.ev_year ?? ""}`);
+    } catch (err) {
+      setErrorMsg(errorMessage(err, "Chargement de l'exemple impossible."));
     } finally {
       setLoadingExample(false);
     }
   }, []);
 
-  // ── 2. Importer un fichier CSV ────────────────────────────────────────
+  // ── 2. Importer un fichier CSV (en-têtes + 1re ligne de données) ──────
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
-        const text = evt.target?.result as string;
-        const lines = text.split('\n').map(l => l.trim()).filter(l => l);
-        if (lines.length < 2) throw new Error("Le CSV doit contenir des en-têtes et au moins une ligne.");
-        const headers = lines[0].split(',');
-        const values = lines[1].split(',');
-        const newForm: Record<string, any> = {};
+        const rows = parseCsv(String(evt.target?.result ?? ""));
+        if (rows.length < 2) throw new Error("CSV vide");
+        const [headers, values] = rows;
+        // Les valeurs restent du texte : le backend connaît le type de chaque
+        // colonne (« 091 » doit rester une catégorie, pas devenir 91).
+        const newForm: FormValues = {};
         headers.forEach((h, i) => {
-          let val: any = values[i] ? values[i].replace(/^"|"$/g, '') : "";
-          if (!isNaN(Number(val)) && val !== "") val = Number(val);
-          newForm[h.replace(/^"|"$/g, '')] = val;
+          if (h.trim()) newForm[h.trim()] = values[i] ?? "";
         });
         setFormData(newForm);
         setDataSourceInfo(`Fichier importé : ${file.name}`);
         setErrorMsg(null);
       } catch {
-        setErrorMsg("Erreur de lecture du fichier CSV. Vérifiez le format.");
+        setErrorMsg("Lecture du CSV impossible : il faut une ligne d'en-têtes et au moins une ligne de données.");
       }
     };
     reader.readAsText(file);
@@ -68,10 +90,7 @@ export default function PredictForm({ onSubmit, isLoading }: PredictFormProps) {
 
   // ── 3. Modifier une valeur ────────────────────────────────────────────
   const updateField = (key: string, value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      [key]: value === "" ? "" : !isNaN(Number(value)) ? Number(value) : value,
-    }));
+    setFormData(prev => ({ ...prev, [key]: value }));
   };
 
   const handleClear = useCallback(() => {
@@ -86,7 +105,7 @@ export default function PredictForm({ onSubmit, isLoading }: PredictFormProps) {
       setErrorMsg("Veuillez charger des données avant de lancer l'analyse.");
       return;
     }
-    await onSubmit(formData as PredictionPayload);
+    await onSubmit(formData);
   }, [formData, onSubmit]);
 
   const hasData = Object.keys(formData).length > 0;
@@ -249,7 +268,8 @@ export default function PredictForm({ onSubmit, isLoading }: PredictFormProps) {
                 </label>
                 <input
                   type="text"
-                  value={value?.toString() || ""}
+                  aria-label={key}
+                  value={value == null ? "" : String(value)}
                   onChange={(e) => updateField(key, e.target.value)}
                 />
               </div>
