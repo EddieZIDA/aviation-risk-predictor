@@ -6,6 +6,10 @@
     "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
     "strict": true,
+    /* Types Node explicites, cherchés UNIQUEMENT dans ce projet : sinon TypeScript remonte
+       les dossiers parents et un @types/node installé ailleurs masque son absence (CI rouge). */
+    "types": ["node"],
+    "typeRoots": ["./node_modules/@types"],
     /* Sorties de `tsc -b` hors du dépôt (sinon vite.config.js / .d.ts apparaissent à la racine) */
     "outDir": "./node_modules/.tmp/node",
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo"
