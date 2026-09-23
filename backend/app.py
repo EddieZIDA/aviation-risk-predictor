@@ -1,94 +1,95 @@
 """
 app.py — Factory Flask
 ======================
-Point d'entrée de l'application. Utilise le pattern Application Factory.
+Point d'entrée de l'application (pattern Application Factory).
+
+Développement :  python app.py
+Production    :  gunicorn -w 2 -b 0.0.0.0:5005 wsgi:app
 """
 
-import os
-from pathlib import Path
-from flask import Flask, jsonify
-from flask_cors import CORS
-from dotenv import load_dotenv
+import logging
 
-# Chargement des variables d'environnement
-load_dotenv()
+from flask import Flask, Response, jsonify
+from flask_cors import CORS
+from werkzeug.exceptions import HTTPException
+
+from config.settings import settings
+
 
 def create_app() -> Flask:
-    """
-    Crée et configure l'instance Flask.
-    """
+    """Crée et configure l'instance Flask."""
+    logging.basicConfig(
+        level=settings.log_level,
+        format="%(asctime)s %(levelname)-7s %(name)s - %(message)s",
+    )
+    logging.getLogger("pymongo").setLevel(logging.WARNING)  # très verbeux en INFO
+
     app = Flask(__name__)
+    app.config["SECRET_KEY"] = settings.secret_key
+    app.config["MAX_CONTENT_LENGTH"] = settings.max_content_length
+    app.json.ensure_ascii = False  # accents lisibles dans les réponses JSON
 
-    # ── Configuration ────────────────────────────────────────────────────────
-    app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-fallback")
-    
-    # Calcul du PROJECT_ROOT : backend/app.py -> backend -> racine
-    PROJECT_ROOT = Path(__file__).resolve().parent.parent
-    _default_pipeline = PROJECT_ROOT / "models" / "full_pipeline.pkl"
-    app.config["PIPELINE_PATH"] = os.getenv("PIPELINE_PATH", str(_default_pipeline))
+    # En dev, le proxy Vite rend CORS inutile ; il reste nécessaire si le
+    # frontend est servi depuis une autre origine (VITE_API_URL absolue).
+    CORS(app, resources={r"/api/*": {"origins": settings.frontend_urls}})
 
-    # ── CORS ────────────────────────────────────────────────────────────────
-    # Autorise les requêtes depuis le frontend (par défaut port 5173 pour Vite)
-    allowed_origins = os.getenv("FRONTEND_URL", "http://localhost:5173")
-    CORS(app, resources={r"/api/*": {"origins": allowed_origins}})
-
-    # ── Enregistrement des Blueprints ────────────────────────────────────
     _register_blueprints(app)
+    _register_error_handlers(app)
 
-    # ── Route de Diagnostic Système ──────────────────────────────────────
     @app.get("/api/health")
-    def system_health():
+    def system_health() -> tuple[Response, int]:
         """
-        Retourne l'état complet des artefacts et services.
-        Répond aux appels de la page HealthPage du frontend.
+        État réel des dépendances, affiché par la page Diagnostic du frontend.
+        Répond toujours 200 : c'est le contenu qui indique ce qui est dégradé.
         """
+        from services.gemini_service import gemini_service
         from services.mongo_service import mongo_service
         from services.prediction_service import prediction_service
 
-        # Vérification dynamique de l'état
-        status = {
+        model = None
+        if prediction_service is not None:
+            model = {
+                "name": prediction_service.model_name,
+                "type": prediction_service.model_type,
+                "confidence_level": prediction_service.confidence_level,
+            }
+
+        mongo_ok = mongo_service is not None and mongo_service.ping()
+        return jsonify({
             "status": "online",
-            "model_loaded": False,
-            "preprocessor_loaded": False,
-            "mongodb_config": {
-                "uri_set": False,
-                "collection": None
+            "model_loaded": prediction_service is not None,
+            "model": model,
+            "mongodb": {
+                "connected": mongo_ok,
+                "test_split_protected": mongo_ok and mongo_service.has_split_field(),
             },
-            "gemini_enabled": bool(os.getenv("GEMINI_API_KEY"))
-        }
-
-        if prediction_service:
-            status["model_loaded"] = hasattr(prediction_service, '_model') and prediction_service._model is not None
-            status["preprocessor_loaded"] = hasattr(prediction_service, '_preprocessor') and prediction_service._preprocessor is not None
-
-        if mongo_service:
-            status["mongodb_config"]["uri_set"] = True
-            status["mongodb_config"]["collection"] = "accidents"
-
-        return jsonify(status), 200
+            "gemini_enabled": gemini_service is not None,
+            "gemini_model": settings.gemini_model if gemini_service is not None else None,
+        }), 200
 
     return app
 
 
 def _register_blueprints(app: Flask) -> None:
-    """Centralise l'enregistrement des routes."""
+    from routes.historical import historical_bp
     from routes.predict import predict_bp
     from routes.report import report_bp
-    from routes.historical import historical_bp
-    
-    app.register_blueprint(predict_bp, url_prefix="/api")
-    app.register_blueprint(report_bp, url_prefix="/api")
-    app.register_blueprint(historical_bp, url_prefix="/api")
+
+    for blueprint in (predict_bp, report_bp, historical_bp):
+        app.register_blueprint(blueprint, url_prefix="/api")
 
 
-# ── Lancement ───────────────────────────────────────────────────────────────
+def _register_error_handlers(app: Flask) -> None:
+    """Toutes les erreurs HTTP (404, 405, 413...) renvoient le format JSON de l'API."""
+
+    @app.errorhandler(HTTPException)
+    def handle_http_error(exc: HTTPException) -> tuple[Response, int]:
+        return jsonify({
+            "status": "error",
+            "code": exc.name.upper().replace(" ", "_"),
+            "message": exc.description,
+        }), exc.code
+
+
 if __name__ == "__main__":
-    flask_app = create_app()
-    # Utilisation du port 5005 comme spécifié dans les logs système
-    port = int(os.getenv("PORT", 5005))
-    
-    flask_app.run(
-        host="0.0.0.0",
-        port=port,
-        debug=os.getenv("FLASK_DEBUG", "0") == "1",
-    )
+    create_app().run(host=settings.host, port=settings.port, debug=settings.debug)
