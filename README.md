@@ -1,6 +1,6 @@
 # AeroRisk : prédiction de la gravité des accidents aériens
 
-Projet de fin d'année (PFA). À partir des rapports d'accidents de la **NTSB** (National
+Projet de fin d'année (PFA) 2026, réalisé par **Wend Kouni Eddie Eliel ZIDA** et **Soukeina DAALI**. À partir des rapports d'accidents de la **NTSB** (National
 Transportation Safety Board, 2008 → 2026) enrichis de la météo **NOAA**, l'application estime la
 **gravité maximale des blessures** d'un événement (`NONE`, `MINR`, `SERS`, `FATL`), quantifie
 l'incertitude de cette estimation par **prédiction conforme (MAPIE)** et génère un **rapport de
@@ -267,3 +267,10 @@ data/               données brutes et nettoyées (non versionnées)
 seed_mongo.py       chargement de MongoDB avec le champ split
 requirements.txt    dépendances Python figées (notebooks + backend)
 ```
+
+## Auteurs
+
+Projet de fin d'année (PFA) 2026, conçu et réalisé en binôme par :
+
+- **Wend Kouni Eddie Eliel ZIDA** ([@EddieZIDA](https://github.com/EddieZIDA))
+- **Soukeina DAALI**
