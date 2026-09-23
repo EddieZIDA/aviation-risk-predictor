@@ -1,12 +1,49 @@
-# AeroRisk — Prédiction de la gravité des accidents aériens
+# AeroRisk : prédiction de la gravité des accidents aériens
 
-Projet de fin d'année (PFA). À partir des rapports d'accidents de la **NTSB** (National
+Projet de fin d'année (PFA) 2026, réalisé par **Wend Kouni Eddie Eliel ZIDA** et **Soukaina DAALI**. À partir des rapports d'accidents de la **NTSB** (National
 Transportation Safety Board, 2008 → 2026) enrichis de la météo **NOAA**, l'application estime la
 **gravité maximale des blessures** d'un événement (`NONE`, `MINR`, `SERS`, `FATL`), quantifie
 l'incertitude de cette estimation par **prédiction conforme (MAPIE)** et génère un **rapport de
 sécurité** avec un LLM (Google Gemini), rédigé en se préparant au pire scénario plausible.
 
-![Pipeline](https://img.shields.io/badge/ML-XGBoost%20%2B%20MAPIE-blue) ![API](https://img.shields.io/badge/API-Flask-lightgrey) ![UI](https://img.shields.io/badge/UI-React%20%2B%20Vite-61dafb)
+[![CI](https://github.com/EddieZIDA/aviation-risk-predictor/actions/workflows/ci.yml/badge.svg)](https://github.com/EddieZIDA/aviation-risk-predictor/actions/workflows/ci.yml) ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white) ![Pipeline](https://img.shields.io/badge/ML-XGBoost%20%2B%20MAPIE-blue) ![API](https://img.shields.io/badge/API-Flask-lightgrey) ![UI](https://img.shields.io/badge/UI-React%20%2B%20Vite-61dafb) ![LLM](https://img.shields.io/badge/LLM-Google%20Gemini-8E75B2) ![DB](https://img.shields.io/badge/DB-MongoDB-47A248?logo=mongodb&logoColor=white)
+
+---
+
+## Aperçu de l'application
+
+L'interface compte trois vues : **Prédiction**, **Exploration** et **Diagnostic**.
+
+### Prédiction et incertitude
+
+Un dossier NTSB (importé en CSV ou tiré de la base) est envoyé à l'API. L'application affiche la
+classe la plus probable, les probabilités par classe et l'**ensemble de classes plausibles à 90 %**
+calculé par MAPIE. Le scénario le plus grave de cet ensemble devient le *scénario de précaution*.
+
+![Prédiction de la gravité et intervalle d'incertitude MAPIE](docs/screenshots/01_prediction.png)
+
+### Rapport de sécurité généré par Gemini
+
+Le LLM rédige une synthèse, les facteurs de risque et des recommandations, ancrés sur le scénario
+de précaution plutôt que sur la seule classe majoritaire.
+
+![Rapport de sécurité Gemini](docs/screenshots/02_rapport_gemini.png)
+
+### Exploration de la base NTSB
+
+Indicateurs globaux et graphiques interactifs calculés sur les données d'entraînement et de
+validation uniquement : le jeu de test reste invisible depuis l'interface.
+
+| Vue d'ensemble | Gravité selon une variable |
+|---|---|
+| ![Statistiques de la base NTSB](docs/screenshots/03_exploration.png) | ![Répartition de la gravité selon les conditions lumineuses](docs/screenshots/04_gravite_conditions.png) |
+
+### Diagnostic
+
+État en temps réel du modèle, du module d'incertitude, de MongoDB et du service Gemini
+(route `/api/health`).
+
+![Supervision du pipeline ML](docs/screenshots/05_diagnostic.png)
 
 ---
 
@@ -93,10 +130,10 @@ python seed_mongo.py
 ## Lancer l'application
 
 ```bash
-# Terminal 1 — API
+# Terminal 1 : API
 cd backend && python app.py                 # http://127.0.0.1:5005/api/health
 
-# Terminal 2 — interface
+# Terminal 2 : interface
 cd frontend && npm run dev                  # http://localhost:5173
 ```
 
@@ -158,10 +195,10 @@ comme en production) :
 **Variables.** 86 variables d'entrée, toutes connues **avant** le vol (météo NOAA et NTSB,
 aéronef, équipage, exploitation, temps cyclique), soit 375 colonnes après encodage one-hot et
 `VarianceThreshold`. Deux familles sont exclues (audit dans le NB03 §6) :
-- **fuite de la cible** — variables renseignées par l'enquête après l'accident : `crew_tox_perf`
+- **fuite de la cible** (variables renseignées par l'enquête après l'accident) : `crew_tox_perf`
   (test toxicologique pratiqué à l'autopsie, 96,6 % d'accidents mortels quand il vaut `Y`),
   `elt_oper`, `latlong_acq`, `wx_src_iic` ;
-- **indicateurs de valeur manquante** `is_missing_*` — le formulaire est moins complet quand le
+- **indicateurs de valeur manquante** `is_missing_*` : le formulaire est moins complet quand le
   pilote est décédé ; pour un vol réel ces données sont connues, et le modèle aurait poussé vers
   `FATL` toute saisie incomplète.
 
@@ -225,7 +262,15 @@ précaution).
 backend/            API Flask (config/, routes/, services/, utils/, tests/)
 frontend/           interface React + TypeScript (Vite, Recharts)
 notebooks/          pipeline ML 01 → 05 et figures
+docs/screenshots/   captures d'écran de l'application
 data/               données brutes et nettoyées (non versionnées)
 seed_mongo.py       chargement de MongoDB avec le champ split
 requirements.txt    dépendances Python figées (notebooks + backend)
 ```
+
+## Auteurs
+
+Projet de fin d'année (PFA) 2026, conçu et réalisé en binôme par :
+
+- **Wend Kouni Eddie Eliel ZIDA** ([@EddieZIDA](https://github.com/EddieZIDA))
+- **Soukaina DAALI** ([@soukainadaali](https://github.com/soukainadaali))
