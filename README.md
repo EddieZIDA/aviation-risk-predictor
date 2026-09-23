@@ -1,6 +1,6 @@
 # AeroRisk : prédiction de la gravité des accidents aériens
 
-Projet de fin d'année (PFA) 2026, réalisé par **Wend Kouni Eddie Eliel ZIDA** et **Soukeina DAALI**. À partir des rapports d'accidents de la **NTSB** (National
+Projet de fin d'année (PFA) 2026, réalisé par **Wend Kouni Eddie Eliel ZIDA** et **Soukaina DAALI**. À partir des rapports d'accidents de la **NTSB** (National
 Transportation Safety Board, 2008 → 2026) enrichis de la météo **NOAA**, l'application estime la
 **gravité maximale des blessures** d'un événement (`NONE`, `MINR`, `SERS`, `FATL`), quantifie
 l'incertitude de cette estimation par **prédiction conforme (MAPIE)** et génère un **rapport de
@@ -195,7 +195,7 @@ comme en production) :
 **Variables.** 86 variables d'entrée, toutes connues **avant** le vol (météo NOAA et NTSB,
 aéronef, équipage, exploitation, temps cyclique), soit 375 colonnes après encodage one-hot et
 `VarianceThreshold`. Deux familles sont exclues (audit dans le NB03 §6) :
-- **fuite de la cible** : variables renseignées par l'enquête après l'accident : `crew_tox_perf`
+- **fuite de la cible** (variables renseignées par l'enquête après l'accident) : `crew_tox_perf`
   (test toxicologique pratiqué à l'autopsie, 96,6 % d'accidents mortels quand il vaut `Y`),
   `elt_oper`, `latlong_acq`, `wx_src_iic` ;
 - **indicateurs de valeur manquante** `is_missing_*` : le formulaire est moins complet quand le
@@ -273,4 +273,4 @@ requirements.txt    dépendances Python figées (notebooks + backend)
 Projet de fin d'année (PFA) 2026, conçu et réalisé en binôme par :
 
 - **Wend Kouni Eddie Eliel ZIDA** ([@EddieZIDA](https://github.com/EddieZIDA))
-- **Soukeina DAALI**
+- **Soukaina DAALI** ([@soukainadaali](https://github.com/soukainadaali))
