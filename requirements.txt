@@ -1,0 +1,42 @@
+# Un seul environnement pour les notebooks ET le backend (Python 3.12).
+# Les versions ML doivent rester identiques à celles qui ont produit les
+# artefacts .pkl : un pickle scikit-learn/XGBoost n'est garanti que dans la
+# version qui l'a créé. Toute montée de version impose de ré-exécuter NB03 → NB05.
+#
+#   python -m venv .venv
+#   .venv\Scripts\activate          (Windows)  |  source .venv/bin/activate
+#   pip install -r requirements.txt
+
+# ── API web ───────────────────────────────────────
+flask==3.0.3
+flask-cors==4.0.1
+gunicorn==22.0.0
+python-dotenv==1.0.1
+
+# ── Machine Learning (figé : artefacts .pkl) ──────
+scikit-learn==1.7.2
+xgboost==2.1.1
+lightgbm==4.3.0
+catboost==1.2.10
+mapie==0.8.6
+pandas==2.2.2
+numpy==1.26.4
+joblib==1.4.2
+
+# ── Base de données ───────────────────────────────
+pymongo==4.7.1
+
+# ── LLM (SDK officiel ; google-generativeai est déprécié) ──
+google-genai==2.25.0
+pydantic==2.13.4
+
+# ── Notebooks ─────────────────────────────────────
+ipykernel==7.2.0
+nbconvert==7.17.1
+matplotlib==3.10.8
+seaborn==0.13.2
+shap==0.45.1
+
+# ── Tests & qualité ───────────────────────────────
+pytest==9.1.1
+ruff==0.14.0

@@ -3,40 +3,31 @@
 # ========================
 __pycache__/
 *.py[cod]
-*.pyo
 .venv/
 venv/
 env/
 
 # ========================
-# Variables d'environnement
+# Variables d'environnement (secrets)
 # ========================
 .env
 
 # ========================
-# Modèles ML et Logs
+# Données (volumineuses / téléchargeables)
+# ========================
+data/raw/
+data/processed/
+data/ntsb_csv/
+data/noaa_cache/
+*.csv
+
+# ========================
+# Artefacts ML (régénérés par les notebooks 03 → 05)
 # ========================
 *.pkl
 *.joblib
 notebooks/catboost_info/
 notebooks/outputs/
-
-
-# ========================
-# Modèles ML et Logs
-# ========================
-models/*.pkl
-models/*.joblib
-notebooks/catboost_info/
-notebooks/outputs/
-
-# ========================
-# Données brutes et sensibles
-# ========================
-data/raw/
-data/processed/
-data/ntsb_csv/
-*.csv
 
 # ========================
 # IDE & OS
@@ -47,8 +38,10 @@ data/ntsb_csv/
 Thumbs.db
 
 # ========================
-# Tests
+# Tests, lint, logs
 # ========================
 .pytest_cache/
+.ruff_cache/
 htmlcov/
 .coverage
+*.log

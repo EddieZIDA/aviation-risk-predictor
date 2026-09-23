@@ -1,0 +1,6 @@
+[flake8]
+# Aligné sur pyproject.toml (ruff) ; utilisé par l'extension Flake8 de VS Code.
+max-line-length = 110
+extend-exclude = .venv,notebooks,frontend
+per-file-ignores =
+    backend/services/gemini_service.py:E501

@@ -1,0 +1,18 @@
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+extend-exclude = ["notebooks", ".venv", "frontend"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# Le prompt LLM contient de longues lignes de texte volontairement non coupées.
+"backend/services/gemini_service.py" = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["config", "routes", "services", "utils", "conftest", "app"]
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+pythonpath = ["backend", "backend/tests"]
